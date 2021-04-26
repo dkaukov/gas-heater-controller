@@ -24,21 +24,28 @@ t_ControllerState controllerState = CONTROLLER_STATE_IDLE;
 double Setpoint, camTemperature, Output;
 
 // Specify the links and initial tuning parameters
-double Kp = 0.3, Ki = 0.5, Kd = 0;
+double Kp = 0.5, Ki = 0.3, Kd = 0;
 PID heaterPID(&camTemperature, &Output, &Setpoint, Kp, Ki, Kd, REVERSE);
 
 Servo flowServo;
+Servo fakeServo;
 thermistor body(THERMISTOR_PIN, 0);
+
+void syncOnServoPulse() {
+  while (digitalRead(SERVO_HEATER_PIN) == LOW);
+  while (digitalRead(SERVO_HEATER_PIN) == HIGH);
+ }
 
 void turnOnServo() {
   flowServo.attach(SERVO_HEATER_PIN, MIN_PULSE_WIDTH, MAX_PULSE_WIDTH);
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void turnOffServo() {
   if (flowServo.attached()) {
+    syncOnServoPulse();
     flowServo.detach();
-    pinMode(SERVO_HEATER_PIN, INPUT);
-    digitalWrite(SERVO_HEATER_PIN, HIGH);
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -49,11 +56,15 @@ void initFlowServo() {
   turnOffServo();
 }
 
+void fanControl();
+
 void controlLoop() {
   if (heaterPID.Compute()) {
     if (abs(flowServo.read() - Output) >= 1.0) {
       turnOnServo();
       flowServo.write(Output);
+      syncOnServoPulse();
+      fanControl();
     } else {
       turnOffServo();
     }
@@ -63,11 +74,9 @@ void controlLoop() {
 void sensorLoop() {
   const float x = 0.86;
   camTemperature = camTemperature * x + body.analog2temp() * (1 - x);
-  // Input = body.analog2temp();
 }
 
 void reportLoop() {
-  //digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   Serial.print("On/Off pin:");
   Serial.println(digitalRead(ON_OFF_PIN));
   Serial.print("Fan mode pin:");
@@ -81,9 +90,15 @@ void reportLoop() {
   Serial.println("----------------------");
 }
 
-void fanControlLoop() {
-  digitalWrite(RELAY_ON_OFF_PIN, (camTemperature > 50.0));
+void fanControl() {
+  digitalWrite(RELAY_ON_OFF_PIN,  (camTemperature > 50.0));
   digitalWrite(RELAY_HIGH_LO_PIN, (camTemperature < 160.0));
+}
+
+void fanControlLoop() {
+  if (controllerState != CONTROLLER_STATE_RUNNING) {
+    fanControl();
+  }
 }
 
 void startControlLoop();
@@ -134,7 +149,7 @@ void stateControlLoop() {
   }
 }
 
-Ticker controlLoopTicker(controlLoop, 2500, 0, MILLIS);
+Ticker controlLoopTicker(controlLoop, 1000, 0, MILLIS);
 Ticker sensorLoopTicker(sensorLoop, 10, 0, MILLIS);
 Ticker reportLoopTicker(reportLoop, 1000, 0, MILLIS);
 Ticker fanControlLoopTicker(fanControlLoop, 10000, 0, MILLIS);
@@ -157,6 +172,7 @@ void stopControlLoop() {
 
 void setup() {
   Serial.begin(115200);
+  fakeServo.attach(9);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ON_OFF_PIN, INPUT);
   pinMode(FAN_MODE_PIN, INPUT);
