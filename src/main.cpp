@@ -37,7 +37,7 @@ void syncOnServoPulse() {
  }
 
 void turnOnServo() {
-  flowServo.attach(SERVO_HEATER_PIN, MIN_PULSE_WIDTH, MAX_PULSE_WIDTH);
+  flowServo.attach(SERVO_HEATER_PIN, MIN_PULSE_WIDTH + 250, MAX_PULSE_WIDTH  + 250);
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
