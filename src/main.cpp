@@ -11,14 +11,21 @@ enum t_ControllerState {
   CONTROLLER_STATE_SHUTTING_DOWN,
 };
 
+enum t_FanState {
+  FAN_STATE_OFF,
+  FAN_STATE_LOW,
+  FAN_STATE_HIGH,
+};
+
 #define SERVO_HEATER_PIN 10
 #define THERMISTOR_PIN A3
 #define ON_OFF_PIN 4
 #define FAN_MODE_PIN 5
-#define RELAY_ON_OFF_PIN 3
-#define RELAY_HIGH_LO_PIN 2
+#define RELAY_ON_LOW_PIN 3
+#define RELAY_ON_HIGH_PIN 2
 
 t_ControllerState controllerState = CONTROLLER_STATE_IDLE;
+t_FanState fanState = FAN_STATE_OFF;
 
 // Define Variables we'll be connecting to
 double Setpoint, camTemperature, Output;
@@ -32,12 +39,14 @@ Servo fakeServo;
 thermistor body(THERMISTOR_PIN, 0);
 
 void syncOnServoPulse() {
-  while (digitalRead(SERVO_HEATER_PIN) == LOW);
-  while (digitalRead(SERVO_HEATER_PIN) == HIGH);
- }
+  while (digitalRead(SERVO_HEATER_PIN) == LOW)
+    ;
+  while (digitalRead(SERVO_HEATER_PIN) == HIGH)
+    ;
+}
 
 void turnOnServo() {
-  flowServo.attach(SERVO_HEATER_PIN, MIN_PULSE_WIDTH + 250, MAX_PULSE_WIDTH  + 250);
+  flowServo.attach(SERVO_HEATER_PIN, MIN_PULSE_WIDTH + 250, MAX_PULSE_WIDTH + 250);
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
@@ -64,7 +73,6 @@ void controlLoop() {
       turnOnServo();
       flowServo.write(Output);
       syncOnServoPulse();
-      fanControl();
     } else {
       turnOffServo();
     }
@@ -90,15 +98,33 @@ void reportLoop() {
   Serial.println("----------------------");
 }
 
+void setFanMode(t_FanState fanMode) {
+  if (fanState != fanMode) {
+    digitalWrite(RELAY_ON_LOW_PIN, HIGH);
+    digitalWrite(RELAY_ON_HIGH_PIN, HIGH);
+    delay(200);
+    if (fanMode == FAN_STATE_LOW) {
+      digitalWrite(RELAY_ON_LOW_PIN, LOW);
+    }
+    if (fanMode == FAN_STATE_HIGH) {
+      digitalWrite(RELAY_ON_HIGH_PIN, LOW);
+    }
+    fanState = fanMode;
+  }
+}
+
 void fanControl() {
-  digitalWrite(RELAY_ON_OFF_PIN,  (camTemperature > 50.0));
-  digitalWrite(RELAY_HIGH_LO_PIN, (camTemperature < 160.0));
+  if (camTemperature > 160.0) {
+    setFanMode(FAN_STATE_HIGH);
+  } else if (camTemperature > 60.0) {
+    setFanMode(FAN_STATE_LOW);
+  } else {
+    setFanMode(FAN_STATE_OFF);
+  }
 }
 
 void fanControlLoop() {
-  if (controllerState != CONTROLLER_STATE_RUNNING) {
-    fanControl();
-  }
+  fanControl();
 }
 
 void startControlLoop();
@@ -179,8 +205,12 @@ void setup() {
   digitalWrite(ON_OFF_PIN, HIGH);
   digitalWrite(FAN_MODE_PIN, HIGH);
   digitalWrite(SERVO_HEATER_PIN, HIGH);
-  pinMode(RELAY_ON_OFF_PIN, OUTPUT);
-  pinMode(RELAY_HIGH_LO_PIN, OUTPUT);
+
+  pinMode(RELAY_ON_LOW_PIN, OUTPUT);
+  pinMode(RELAY_ON_HIGH_PIN, OUTPUT);
+  digitalWrite(RELAY_ON_LOW_PIN, HIGH);
+  digitalWrite(RELAY_ON_HIGH_PIN, HIGH);
+
   initFlowServo();
   sensorLoop();
   sensorLoopTicker.start();
